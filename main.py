@@ -76,6 +76,7 @@ class AudioLoop:
 
         self.session = None
         self.audio_stream = None
+        self.playing = False  # True while speaker is outputting (mutes mic)
 
         self.mcp_client = MCPClient()
 
@@ -84,7 +85,13 @@ class AudioLoop:
             text = await asyncio.to_thread(input, "message > ")
             if text.lower() == "q":
                 break
-            await self.session.send(input=text or ".", end_of_turn=True)
+            await self.session.send_client_content(
+                turns=types.Content(
+                    role="user",
+                    parts=[types.Part(text=text or ".")],
+                ),
+                turn_complete=True,
+            )
 
     async def handle_tool_call(self, tool_call):
         for fc in tool_call.function_calls:
@@ -109,7 +116,9 @@ class AudioLoop:
                     )
                 ]
             )
-            await self.session.send(input=tool_response)
+            await self.session.send_tool_response(
+                function_responses=tool_response.function_responses,
+            )
 
     async def listen_audio(self):
         mic_info = pya.get_default_input_device_info()
@@ -129,18 +138,20 @@ class AudioLoop:
             kwargs = {}
         while True:
             data = await asyncio.to_thread(self.audio_stream.read, CHUNK_SIZE, **kwargs)
-            await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
+            if not self.playing:
+                await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
 
     async def send_realtime(self):
         while True:
             msg = await self.out_queue.get()
-            await self.session.send(input=msg)
+            await self.session.send_realtime_input(media=msg)
 
     async def receive_audio(self):
         while True:
             turn = self.session.receive()
             async for response in turn:
                 if data := response.data:
+                    self.playing = True
                     self.audio_in_queue.put_nowait(data)
                     continue
                 if text := response.text:
@@ -161,9 +172,10 @@ class AudioLoop:
                 if tool_call is not None:
                     await self.handle_tool_call(tool_call)
 
-            # On interruption, clear queued audio
+            # Turn complete — wait for playback to drain, then unmute mic
             while not self.audio_in_queue.empty():
-                self.audio_in_queue.get_nowait()
+                await asyncio.sleep(0.05)
+            self.playing = False
 
     async def play_audio(self):
         stream = await asyncio.to_thread(
