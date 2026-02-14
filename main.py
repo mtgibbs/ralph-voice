@@ -34,7 +34,7 @@ SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE = 1024
 
-MODEL = "models/gemini-2.0-flash"
+MODEL = "models/gemini-2.5-flash-native-audio-latest"
 
 SYSTEM_INSTRUCTION = """\
 You are Ralph Voice, a hands-free voice assistant for managing Ralph parallel \
@@ -217,7 +217,7 @@ class AudioLoop:
 
         except asyncio.CancelledError:
             pass
-        except asyncio.ExceptionGroup as EG:
+        except ExceptionGroup as EG:
             if self.audio_stream:
                 self.audio_stream.close()
             traceback.print_exception(EG)
