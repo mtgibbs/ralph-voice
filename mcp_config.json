@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ralph": {
+      "command": "deno",
+      "args": ["run", "-A", "/Users/mtgibbs/ai-research/ralph-mcp/main.ts"],
+      "env": {
+        "RALPH_HOME": "/Users/mtgibbs/ai-research/ralph"
+      }
+    }
+  }
+}
