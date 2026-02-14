@@ -12,17 +12,15 @@ Voice interface for Ralph MCP via Gemini Live API. Speak commands to launch/stop
 ## Running
 
 ```bash
-# Set your Gemini API key
-cp .env.example .env
-# Edit .env with your key from https://aistudio.google.dev/apikey
+# Voice-only (default) — API key injected from 1Password
+op run --env-file .env.op -- uv run main.py
 
-# Run voice-only (default)
-uv run main.py
-
-# Run with camera or screen sharing
-uv run main.py --mode=camera
-uv run main.py --mode=screen
+# With camera or screen sharing
+op run --env-file .env.op -- uv run main.py --mode=camera
+op run --env-file .env.op -- uv run main.py --mode=screen
 ```
+
+API key is stored in 1Password: `Development - Private` vault → `Google AI Studio API Keys` → `voice-api-key`. The `.env.op` template references it via `op://` URI — no secrets on disk.
 
 Type `q` + Enter in the terminal to quit. You can also type text messages at the `message >` prompt.
 
