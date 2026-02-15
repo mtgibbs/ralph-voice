@@ -7,6 +7,7 @@ Based on allenbijo/gemini-live-mcp (MIT license).
 """
 
 import asyncio
+import json
 import sys
 import traceback
 import argparse
@@ -45,6 +46,10 @@ You have access to Ralph MCP tools:
 - ralph_launch: Start agents against a project directory
 - ralph_stop: Gracefully stop running agents
 - ralph_status: Check container health, story progress, recent commits
+- ralph_changes: Get only what changed since the last check (new commits, story \
+transitions, new logs, container changes). For follow-up status checks, prefer \
+this over ralph_status — it returns only deltas. The since_commit parameter is \
+auto-injected from previous calls, so you don't need to provide it.
 - ralph_logs: Read agent iteration logs
 - ralph_prd_read: Read the PRD (product requirements document) with stories
 - ralph_prd_update: Add, edit, or remove stories in the PRD
@@ -80,6 +85,9 @@ class AudioLoop:
 
         self.mcp_client = MCPClient()
 
+        # Per-project commit cache for ralph_changes delta tracking
+        self._last_commits: dict[str, str] = {}  # project_dir → commit hash
+
     async def send_text(self):
         while True:
             text = await asyncio.to_thread(input, "message > ")
@@ -95,14 +103,28 @@ class AudioLoop:
 
     async def handle_tool_call(self, tool_call):
         for fc in tool_call.function_calls:
-            print(f"\n[tool] {fc.name}({fc.args})")
+            args = fc.args or {}
+
+            # Auto-inject since_commit for ralph_changes
+            if fc.name == "ralph_changes" and "since_commit" not in args:
+                project_dir = args.get("project_dir", "")
+                cached = self._last_commits.get(project_dir)
+                if cached:
+                    args["since_commit"] = cached
+                    print(f"\n[voice] Auto-injected since_commit={cached[:8]}...")
+
+            print(f"\n[tool] {fc.name}({args})")
             try:
                 result = await self.mcp_client.call_tool(
                     name=fc.name,
-                    arguments=fc.args,
+                    arguments=args,
                 )
                 print(f"[tool] result: {result}")
                 response_data = {"result": result}
+
+                # Cache latest_commit from ralph_changes or ralph_status responses
+                if fc.name in ("ralph_changes", "ralph_status"):
+                    self._cache_latest_commit(args, result)
             except Exception as e:
                 print(f"[tool] error: {e}")
                 response_data = {"error": str(e)}
@@ -119,6 +141,31 @@ class AudioLoop:
             await self.session.send_tool_response(
                 function_responses=tool_response.function_responses,
             )
+
+    def _cache_latest_commit(self, args: dict, result) -> None:
+        """Extract latest_commit from tool response and cache per project."""
+        try:
+            # MCP result is a list of content blocks; find the text one
+            text = None
+            if isinstance(result, list):
+                for block in result:
+                    if hasattr(block, "text"):
+                        text = block.text
+                        break
+            elif isinstance(result, str):
+                text = result
+
+            if not text:
+                return
+
+            data = json.loads(text)
+            commit = data.get("latest_commit")
+            project = args.get("project_dir") or data.get("project")
+            if commit and project and commit != "unknown":
+                self._last_commits[project] = commit
+                print(f"[voice] Cached latest_commit={commit[:8]}... for {project}")
+        except (json.JSONDecodeError, AttributeError):
+            pass
 
     async def listen_audio(self):
         mic_info = pya.get_default_input_device_info()
