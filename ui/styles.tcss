@@ -10,6 +10,14 @@ StatusBar {
     padding: 0 1;
 }
 
+AgentPanel {
+    height: auto;
+    max-height: 8;
+    background: $surface;
+    padding: 0 1;
+    border-top: solid $accent;
+}
+
 Input {
     height: 3;
 }
