@@ -38,9 +38,9 @@ API key is stored in 1Password: `Development - Private` vault → `Google AI Stu
 
 ### TUI Controls
 
-- **m** — Toggle mic mute/unmute
-- **q** — Quit
-- **t** — Toggle dark/light theme
+- **Ctrl+M** — Toggle mic mute/unmute
+- **Ctrl+Q** — Quit
+- **Ctrl+T** — Toggle dark/light theme
 - Type text in the input bar and press Enter to send to Gemini
 
 ## Dependencies
