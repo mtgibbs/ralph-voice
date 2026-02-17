@@ -1,0 +1,15 @@
+StatusBar {
+    dock: top;
+    height: 1;
+    background: $surface;
+    padding: 0 1;
+}
+
+#transcript {
+    height: 1fr;
+    padding: 0 1;
+}
+
+Input {
+    height: 3;
+}

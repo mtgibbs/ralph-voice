@@ -11,4 +11,5 @@ dependencies = [
     "pyaudio>=0.2.14",
     "python-dotenv>=1.1.0",
     "taskgroup>=0.2.2",
+    "textual>=0.75.0",
 ]
