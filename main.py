@@ -5,6 +5,7 @@ Gemini Live session, and MCP tool dispatch.
 """
 
 import argparse
+import os
 
 from ui.app import RalphVoiceApp
 
@@ -28,7 +29,15 @@ def main():
     args = parser.parse_args()
 
     app = RalphVoiceApp(video_mode=args.mode, start_muted=args.muted)
-    app.run()
+    try:
+        app.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Force exit — PyAudio threads block in asyncio.to_thread() and prevent
+        # the asyncio runner's default executor from shutting down cleanly.
+        # App cleanup (stream close, PyAudio terminate) already ran in _do_quit().
+        os._exit(0)
 
 
 if __name__ == "__main__":

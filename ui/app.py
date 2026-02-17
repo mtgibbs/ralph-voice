@@ -1,7 +1,7 @@
 """RalphVoiceApp — Textual TUI for Ralph Voice."""
 
+import asyncio
 import re
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -199,21 +199,21 @@ class RalphVoiceApp(App):
         panel = self.query_one(AgentPanel)
         panel.display = not panel.display
 
-    def action_quit(self) -> None:
+    async def action_quit(self) -> None:
         """Check for running containers, then shut down."""
-        containers = self._get_running_ralph_containers()
+        containers = await self._get_running_ralph_containers()
         if containers:
             self.push_screen(QuitConfirmScreen(containers), self._on_quit_confirm)
         else:
             self._do_quit()
 
-    def _on_quit_confirm(self, result: str) -> None:
+    async def _on_quit_confirm(self, result: str) -> None:
         """Handle quit confirmation modal result."""
         if result == "stop-quit":
-            containers = self._get_running_ralph_containers()
+            containers = await self._get_running_ralph_containers()
             if containers:
                 self._write_transcript("[yellow]Stopping ralph containers...[/]")
-                self._stop_ralph_containers(containers)
+                await self._stop_ralph_containers(containers)
                 self._write_transcript("[green]Containers stopped.[/]")
             self._do_quit()
         elif result == "leave-quit":
@@ -223,33 +223,46 @@ class RalphVoiceApp(App):
     def _do_quit(self) -> None:
         """Actually shut down and exit."""
         self.audio_loop.shutdown()
+        # Force-close audio resources so background threads unblock
+        try:
+            if self.audio_loop.audio_stream:
+                self.audio_loop.audio_stream.close()
+                self.audio_loop.audio_stream = None
+            if self.audio_loop._pya:
+                self.audio_loop._pya.terminate()
+                self.audio_loop._pya = None
+        except Exception:
+            pass
         self._close_log_file()
         self.exit()
 
     @staticmethod
-    def _get_running_ralph_containers() -> list[str]:
+    async def _get_running_ralph_containers() -> list[str]:
         """Return names of running ralph containers."""
         try:
-            result = subprocess.run(
-                ["docker", "ps", "--filter", "name=ralph-", "--format", "{{.Names}}"],
-                capture_output=True, text=True, timeout=5,
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "ps", "--filter", "name=ralph-", "--format", "{{.Names}}",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             )
-            return [n for n in result.stdout.strip().split("\n") if n]
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            return [n for n in stdout.decode().strip().split("\n") if n]
         except Exception:
             return []
 
     @staticmethod
-    def _stop_ralph_containers(containers: list[str]) -> None:
+    async def _stop_ralph_containers(containers: list[str]) -> None:
         """Stop and remove the given containers."""
         try:
-            subprocess.run(
-                ["docker", "stop", "-t", "15"] + containers,
-                capture_output=True, timeout=30,
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "stop", "-t", "15", *containers,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
             )
-            subprocess.run(
-                ["docker", "rm"] + containers,
-                capture_output=True, timeout=10,
+            await asyncio.wait_for(proc.wait(), timeout=30)
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "rm", *containers,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
             )
+            await asyncio.wait_for(proc.wait(), timeout=10)
         except Exception:
             pass
 

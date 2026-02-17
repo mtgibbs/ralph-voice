@@ -141,13 +141,19 @@ class AudioLoop:
         if not self.session:
             return
         self._emit(AudioEvent(type=EventType.USER_TEXT, text=text))
-        await self.session.send_client_content(
-            turns=types.Content(
-                role="user",
-                parts=[types.Part(text=text or ".")],
-            ),
-            turn_complete=True,
-        )
+        try:
+            await self.session.send_client_content(
+                turns=types.Content(
+                    role="user",
+                    parts=[types.Part(text=text or ".")],
+                ),
+                turn_complete=True,
+            )
+        except Exception as e:
+            self._emit(AudioEvent(
+                type=EventType.ERROR,
+                text=f"Session disconnected: {e}",
+            ))
 
     async def handle_tool_call(self, tool_call):
         for fc in tool_call.function_calls:
@@ -315,6 +321,14 @@ class AudioLoop:
         while True:
             bytestream = await self.audio_in_queue.get()
             await asyncio.to_thread(stream.write, bytestream)
+            # Detect end of playback: if queue is empty after writing the last
+            # chunk, unmute the mic immediately instead of waiting for Gemini's
+            # turn-complete signal (which can lag several seconds).
+            if self.playing and self.audio_in_queue.empty():
+                await asyncio.sleep(0.08)  # brief grace for trailing chunks
+                if self.audio_in_queue.empty():
+                    self.playing = False
+                    self._emit(AudioEvent(type=EventType.PLAYBACK_END))
 
     async def run(self):
         """Main entry point — connect MCP, start Gemini session, run audio tasks."""

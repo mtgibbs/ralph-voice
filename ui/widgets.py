@@ -85,6 +85,8 @@ class AgentPanel(Widget):
         super().__init__(**kwargs)
         self._mcp_client = mcp_client
         self._tracked_projects: set[str] = set()
+        self._container_projects: dict[str, str] = {}  # container_name → project_dir
+        self._container_roles: dict[str, str] = {}  # container_name → role
         self._poll_interval = self._POLL_IDLE
         self._last_nonempty: float = 0.0  # timestamp of last poll with containers
         self._frame: int = 0
@@ -156,11 +158,11 @@ class AgentPanel(Widget):
             self._poll_timer = self.set_interval(new_interval, self._poll_wrapper)
 
     async def _discover_from_docker(self) -> None:
-        """Check docker ps for ralph containers and infer project dirs."""
+        """Check docker ps for ralph containers and map them to projects."""
         try:
             proc = await asyncio.create_subprocess_exec(
                 "docker", "ps", "--filter", "name=ralph-",
-                "--format", "{{.Names}}\t{{.Label \"project_dir\"}}",
+                "--format", '{{.Names}}\t{{.Label "ralph.project_dir"}}\t{{.Label "ralph.role"}}',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
@@ -168,9 +170,15 @@ class AgentPanel(Widget):
             for line in stdout.decode().strip().split("\n"):
                 if not line:
                     continue
-                parts = line.split("\t", 1)
-                if len(parts) == 2 and parts[1]:
-                    self._tracked_projects.add(parts[1])
+                parts = line.split("\t")
+                name = parts[0] if len(parts) > 0 else ""
+                project_dir = parts[1] if len(parts) > 1 else ""
+                role = parts[2] if len(parts) > 2 else ""
+                if name and project_dir:
+                    self._tracked_projects.add(project_dir)
+                    self._container_projects[name] = project_dir
+                    if role:
+                        self._container_roles[name] = role
         except Exception:
             pass
 
@@ -222,7 +230,13 @@ class AgentPanel(Widget):
         spinner = self._SPINNER[self._frame % len(self._SPINNER)]
 
         for project_name, data in self.status_data.items():
-            containers = data.get("containers", [])
+            project_dir = data.get("project", "")
+            all_containers = data.get("containers", [])
+            # Filter containers to only those belonging to this project
+            containers = [
+                c for c in all_containers
+                if self._container_projects.get(c.get("name", ""), project_dir) == project_dir
+            ]
             stories = data.get("stories", {})
             progress = stories.get("progress", "")
             recent = data.get("recent_commits", [])
@@ -273,11 +287,15 @@ class AgentPanel(Widget):
                 if not agent_story:
                     agent_story = "[dim]idle[/dim]"
 
+                # Role tag from docker label
+                role = self._container_roles.get(name, "")
+                role_tag = f"[dim]{role[0]}[/dim] " if role else ""
+
                 # Elapsed — extract just the time part from "5 minutes ago"
                 elapsed = running_for.replace(" ago", "") if running_for else ""
 
                 lines.append(
-                    f"  {name:<14} {agent_story:<42} [yellow]{spinner}[/yellow] {elapsed}"
+                    f"  {role_tag}{name:<14} {agent_story:<42} [yellow]{spinner}[/yellow] {elapsed}"
                 )
 
             # Last commit
