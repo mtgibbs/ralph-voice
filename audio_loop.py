@@ -45,7 +45,9 @@ agents. Ralph is a system that launches multiple Claude Code agents in Docker \
 containers to work on software projects in parallel.
 
 You have access to Ralph MCP tools:
-- ralph_launch: Start agents against a project directory
+- ralph_launch: Start agents against a project directory. Accepts optional \
+verifiers parameter (number of verifier agents that independently run tests to \
+gate story completion, default 0)
 - ralph_stop: Gracefully stop running agents
 - ralph_status: Check container health, story progress, recent commits
 - ralph_changes: Get only what changed since the last check (new commits, story \
@@ -61,6 +63,10 @@ is /Users/mtgibbs/dev/school-canvas-claude-integration.
 
 When the user mentions "smoke test", the project directory \
 is /Users/mtgibbs/ai-research/ralph-smoke-test.
+
+You can also search the web using Google Search to research topics, look up \
+documentation, or find current information. Use search when discussing features \
+that need research or when the user asks you to look something up.
 
 Keep spoken responses concise — this is a voice interface. Summarize tool \
 results rather than reading raw JSON. For status checks, focus on: how many \
@@ -326,7 +332,7 @@ class AudioLoop:
             data={"tools": [t["name"] for t in functional_tools]},
         ))
 
-        tools = [{"function_declarations": functional_tools}]
+        tools = [{"google_search": {}, "function_declarations": functional_tools}]
 
         config = {
             "tools": tools,

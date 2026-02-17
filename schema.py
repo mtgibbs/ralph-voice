@@ -7,7 +7,7 @@ declaration.
 """
 
 # Fields Gemini supports at each schema node
-_SUPPORTED_FIELDS = {"type", "description", "enum", "required", "items", "properties"}
+_SUPPORTED_FIELDS = {"type", "description", "enum", "required", "items", "properties", "nullable"}
 
 # Fields that must be removed (would cause Gemini to reject the schema)
 _STRIP_FIELDS = {"$schema", "additionalProperties", "$ref", "$defs", "default", "title"}
@@ -24,7 +24,12 @@ def convert_property(schema: dict) -> dict:
         if key in _STRIP_FIELDS:
             continue
 
-        if key == "properties":
+        if key == "type" and isinstance(value, list):
+            # JSON Schema nullable: ["string", "null"] → extract the non-null type
+            non_null = [t for t in value if t != "null"]
+            result["type"] = non_null[0] if non_null else "STRING"
+            result["nullable"] = "null" in value
+        elif key == "properties":
             result["properties"] = {
                 prop_name: convert_property(prop_schema)
                 for prop_name, prop_schema in value.items()
